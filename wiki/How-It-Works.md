@@ -1,18 +1,20 @@
 # How GardenUpdater Works
 
-Each Garden plugin has its own public repository and publishes stable JARs through GitHub Releases.
+GardenUpdater currently follows successful builds from each plugin's `main` branch.
 
-GardenUpdater:
+For every configured Garden plugin it:
 
-1. Reads the installed Bukkit plugin version.
-2. Requests the latest approved GitHub Release.
-3. Matches the release JAR configured for that plugin.
-4. Compares semantic versions.
-5. Downloads newer JARs to a temporary directory.
-6. Opens the JAR and validates `plugin.yml`.
-7. Confirms the plugin name and release version match.
+1. Reads the current commit SHA of `main`.
+2. Finds a successful GitHub Actions run built from that exact SHA.
+3. Finds the configured workflow artifact.
+4. Compares the main SHA with the last SHA GardenUpdater staged.
+5. Downloads the Actions artifact when the SHA is new.
+6. Extracts the matching plugin JAR.
+7. Validates `plugin.yml` and the Bukkit plugin name.
 8. Moves the validated JAR into Paper's update folder.
-9. Leaves the running plugin untouched.
-10. Paper applies the staged JAR on the next restart.
+9. Saves the staged main SHA.
+10. Leaves the running plugin untouched until the next full restart.
 
-Stable releases are used by default. Pre-releases are opt-in.
+This means a failed Actions build can never be staged by GardenUpdater.
+
+GardenUpdater does not use `/reload` and does not restart the server automatically.

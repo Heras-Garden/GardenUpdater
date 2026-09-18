@@ -29,11 +29,11 @@ public final class GardenUpdater extends JavaPlugin {
 
         List<ManagedPlugin> managed = ManagedPlugin.load(getConfig().getConfigurationSection("plugins"));
         updates = new UpdateService(
-                new GithubReleaseClient(token),
+                new GithubActionsClient(token),
+                new UpdateStateStore(getDataFolder().toPath().resolve("state.yml")),
                 managed,
                 Bukkit.getUpdateFolderFile().toPath(),
-                getDataFolder().toPath().resolve("downloads"),
-                getConfig().getBoolean("updates.include-prereleases", false)
+                getDataFolder().toPath().resolve("downloads")
         );
 
         GardenUpdateCommand command = new GardenUpdateCommand(this);
@@ -41,7 +41,9 @@ public final class GardenUpdater extends JavaPlugin {
         Objects.requireNonNull(getCommand("gardenupdate")).setTabCompleter(command);
 
         scheduleChecks();
-        getLogger().info("GardenUpdater enabled. GitHub Release updates will be staged for the next restart.");
+        getLogger().info(
+                "GardenUpdater enabled. Successful main-branch builds will be staged for the next restart."
+        );
     }
 
     public void showStatus(CommandSender sender) {
@@ -50,13 +52,20 @@ public final class GardenUpdater extends JavaPlugin {
         for (ManagedPlugin plugin : updates.managed()) {
             String version = installed.getOrDefault(plugin.name(), "not installed");
             boolean staged = Files.exists(updates.stagedPath(plugin));
-            send(sender, plugin.name() + " " + version + (staged ? " | update staged" : ""));
+            String sha = updates.lastStagedSha(plugin);
+            String source = sha.isBlank() ? "" : " | last main " + shortSha(sha);
+            send(sender, plugin.name() + " " + version + source + (staged ? " | update staged" : ""));
         }
     }
 
     public void check(CommandSender sender, boolean stage, String requested) {
         Map<String, String> installed = installedVersions();
-        send(sender, stage ? "Checking GitHub Releases and staging updates..." : "Checking GitHub Releases...");
+        send(
+                sender,
+                stage
+                        ? "Checking successful main builds and staging updates..."
+                        : "Checking successful main builds..."
+        );
 
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             List<UpdateStatus> statuses = updates.checkAll(installed);
@@ -74,14 +83,20 @@ public final class GardenUpdater extends JavaPlugin {
                         try {
                             Path path = updates.stage(status);
                             staged++;
-                            send(sender, status.plugin().name() + " " + status.installedVersion()
-                                    + " -> " + status.releaseVersion() + " staged as " + path.getFileName() + ".");
+                            send(
+                                    sender,
+                                    status.plugin().name() + " main " + shortSha(status.mainSha())
+                                            + " staged as " + path.getFileName() + "."
+                            );
                         } catch (Exception exception) {
-                            send(sender, status.plugin().name() + " could not be staged: " + exception.getMessage());
+                            send(
+                                    sender,
+                                    status.plugin().name() + " could not be staged: "
+                                            + exception.getMessage()
+                            );
                         }
                     } else {
-                        send(sender, status.plugin().name() + " " + status.installedVersion()
-                                + " -> " + status.releaseVersion() + " is available.");
+                        send(sender, status.plugin().name() + ": " + status.detail());
                     }
                 } else if (requested != null && !requested.equalsIgnoreCase("all")) {
                     send(sender, status.plugin().name() + ": " + status.detail());
@@ -89,12 +104,15 @@ public final class GardenUpdater extends JavaPlugin {
             }
 
             if (stage && staged > 0) {
-                send(sender, staged + " update" + (staged == 1 ? "" : "s")
-                        + " staged. Restart the server to apply them.");
+                send(
+                        sender,
+                        staged + " update" + (staged == 1 ? "" : "s")
+                                + " staged. Restart the server to apply them."
+                );
             } else if (!stage && available == 0) {
-                send(sender, "No newer Garden releases are available.");
+                send(sender, "No newer successful main builds are available.");
             } else if (stage && available == 0) {
-                send(sender, "No newer Garden releases are available to stage.");
+                send(sender, "No newer successful main builds are available to stage.");
             }
         });
     }
@@ -127,7 +145,10 @@ public final class GardenUpdater extends JavaPlugin {
         if (Bukkit.isPrimaryThread()) {
             sender.sendMessage("[GardenUpdater] " + message);
         } else {
-            Bukkit.getScheduler().runTask(this, () -> sender.sendMessage("[GardenUpdater] " + message));
+            Bukkit.getScheduler().runTask(
+                    this,
+                    () -> sender.sendMessage("[GardenUpdater] " + message)
+            );
         }
     }
 
@@ -158,23 +179,32 @@ public final class GardenUpdater extends JavaPlugin {
                 if (!autoStage) {
                     continue;
                 }
+
                 try {
                     updates.stage(status);
                     staged++;
-                    getLogger().info(status.plugin().name() + " " + status.releaseVersion()
-                            + " was staged for the next restart.");
+                    getLogger().info(
+                            status.plugin().name() + " main " + shortSha(status.mainSha())
+                                    + " was staged for the next restart."
+                    );
                 } catch (Exception exception) {
-                    getLogger().warning("Could not stage " + status.plugin().name() + ": " + exception.getMessage());
+                    getLogger().warning(
+                            "Could not stage " + status.plugin().name() + ": " + exception.getMessage()
+                    );
                 }
             }
 
             if (available > 0 && !autoStage) {
-                getLogger().info(available + " Garden update" + (available == 1 ? " is" : "s are")
-                        + " available. Use /gardenupdate stage all.");
+                getLogger().info(
+                        available + " Garden update" + (available == 1 ? " is" : "s are")
+                                + " available. Use /gardenupdate stage all."
+                );
             }
             if (staged > 0) {
-                getLogger().info(staged + " Garden update" + (staged == 1 ? " is" : "s are")
-                        + " ready. Restart the server when convenient.");
+                getLogger().info(
+                        staged + " Garden update" + (staged == 1 ? " is" : "s are")
+                                + " ready. Restart the server when convenient."
+                );
             }
         });
     }
@@ -194,5 +224,9 @@ public final class GardenUpdater extends JavaPlugin {
         return requested == null
                 || requested.equalsIgnoreCase("all")
                 || plugin.name().toLowerCase(Locale.ROOT).equals(requested.toLowerCase(Locale.ROOT));
+    }
+
+    private String shortSha(String sha) {
+        return sha == null || sha.length() < 8 ? sha : sha.substring(0, 8);
     }
 }

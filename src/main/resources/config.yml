@@ -2,37 +2,56 @@ updates:
   check-on-startup: true
   check-interval-hours: 6
   auto-stage: true
-  include-prereleases: false
   github-token: ""
 
 plugins:
   GardenCore:
     repository: Heras-Garden/GardenCore
-    asset: "GardenCore*.jar"
+    branch: main
+    artifact: GardenCore
+    jar: "GardenCore*.jar"
   GardenLands:
     repository: Heras-Garden/GardenLands
-    asset: "GardenLands*.jar"
+    branch: main
+    artifact: GardenLands
+    jar: "GardenLands*.jar"
   GardenEssentials:
     repository: Heras-Garden/GardenEssentials
-    asset: "GardenEssentials*.jar"
+    branch: main
+    artifact: GardenEssentials
+    jar: "GardenEssentials*.jar"
   GardenModeration:
     repository: Heras-Garden/GardenModeration
-    asset: "GardenModeration*.jar"
+    branch: main
+    artifact: GardenModeration
+    jar: "GardenModeration*.jar"
   GardenPost:
     repository: Heras-Garden/GardenPost
-    asset: "GardenPost*.jar"
+    branch: main
+    artifact: GardenPost
+    jar: "GardenPost*.jar"
   GardenTrade:
     repository: Heras-Garden/GardenTrade
-    asset: "GardenTrade*.jar"
+    branch: main
+    artifact: GardenTrade
+    jar: "GardenTrade*.jar"
   GardenCivics:
     repository: Heras-Garden/GardenCivics
-    asset: "GardenCivics*.jar"
+    branch: main
+    artifact: GardenCivics
+    jar: "GardenCivics*.jar"
   GardenEvents:
     repository: Heras-Garden/GardenEvents
-    asset: "GardenEvents*.jar"
+    branch: main
+    artifact: GardenEvents
+    jar: "GardenEvents*.jar"
   GardenCosmetics:
     repository: Heras-Garden/GardenCosmetics
-    asset: "GardenCosmetics*.jar"
+    branch: main
+    artifact: GardenCosmetics
+    jar: "GardenCosmetics*.jar"
   GardenUpdater:
     repository: Heras-Garden/GardenUpdater
-    asset: "GardenUpdater*.jar"
+    branch: main
+    artifact: GardenUpdater
+    jar: "GardenUpdater*.jar"

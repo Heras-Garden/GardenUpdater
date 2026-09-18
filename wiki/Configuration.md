@@ -5,19 +5,22 @@ updates:
   check-on-startup: true
   check-interval-hours: 6
   auto-stage: true
-  include-prereleases: false
   github-token: ""
 ```
 
-`auto-stage` downloads approved newer releases but does not restart the server.
+`auto-stage` downloads a newer successful main build but does not restart the server.
 
-For public repositories a GitHub token is optional. If one is needed, prefer the `GARDEN_GITHUB_TOKEN` environment variable instead of committing a token to a repository.
+For public repositories, GitHub metadata can often be read without authentication. Actions artifact downloads may require authentication or hit anonymous API limits. Prefer the `GARDEN_GITHUB_TOKEN` environment variable when a token is needed.
 
-Each managed plugin maps to a repository and release asset pattern.
+Each plugin declares the repository, branch, Actions artifact name, and JAR file pattern.
 
 ```yaml
 plugins:
-  GardenCore:
-    repository: Heras-Garden/GardenCore
-    asset: "GardenCore*.jar"
+  GardenLands:
+    repository: Heras-Garden/GardenLands
+    branch: main
+    artifact: GardenLands
+    jar: "GardenLands*.jar"
 ```
+
+The current main commit is only eligible when a successful Actions run exists for that exact SHA.

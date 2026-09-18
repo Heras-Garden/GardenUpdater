@@ -18,28 +18,31 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public final class UpdateService {
+    private static final long MAX_ARTIFACT_SIZE = 200L * 1024L * 1024L;
     private static final long MAX_JAR_SIZE = 100L * 1024L * 1024L;
 
-    private final GithubReleaseClient github;
+    private final GithubActionsClient github;
+    private final UpdateStateStore state;
     private final List<ManagedPlugin> managed;
     private final Path updateFolder;
     private final Path tempFolder;
-    private final boolean includePrereleases;
 
     public UpdateService(
-            GithubReleaseClient github,
+            GithubActionsClient github,
+            UpdateStateStore state,
             List<ManagedPlugin> managed,
             Path updateFolder,
-            Path tempFolder,
-            boolean includePrereleases
+            Path tempFolder
     ) {
         this.github = github;
+        this.state = state;
         this.managed = managed;
         this.updateFolder = updateFolder;
         this.tempFolder = tempFolder;
-        this.includePrereleases = includePrereleases;
     }
 
     public List<ManagedPlugin> managed() {
@@ -59,33 +62,47 @@ public final class UpdateService {
         boolean staged = Files.exists(stagedPath);
 
         if (installedVersion == null || installedVersion.isBlank()) {
-            return new UpdateStatus(plugin, "not installed", "", null, false, staged, "Plugin is not installed.");
+            return new UpdateStatus(
+                    plugin,
+                    "not installed",
+                    "",
+                    null,
+                    false,
+                    staged,
+                    "Plugin is not installed."
+            );
         }
 
         try {
-            Optional<GithubReleaseClient.Release> release = github.latestRelease(plugin.repository(), includePrereleases);
-            if (release.isEmpty()) {
-                return new UpdateStatus(plugin, installedVersion, "", null, false, staged, "No GitHub Release exists yet.");
-            }
-
-            GithubReleaseClient.Release latest = release.get();
-            GithubReleaseClient.Asset asset = selectAsset(plugin, latest)
-                    .orElse(null);
-            if (asset == null) {
+            Optional<GithubActionsClient.MainBuild> build = github.latestSuccessfulMainBuild(plugin);
+            if (build.isEmpty()) {
                 return new UpdateStatus(
                         plugin,
                         installedVersion,
-                        latest.tag(),
+                        "",
                         null,
                         false,
                         staged,
-                        "Release " + latest.tag() + " does not contain a matching JAR."
+                        "No successful Actions build exists for the current " + plugin.branch() + " commit."
                 );
             }
 
-            boolean available = SemVer.parse(latest.tag()).compareTo(SemVer.parse(installedVersion)) > 0;
-            String detail = available ? "Update available." : "Already current.";
-            return new UpdateStatus(plugin, installedVersion, latest.tag(), asset, available, staged, detail);
+            GithubActionsClient.MainBuild latest = build.get();
+            String lastStaged = state.lastStagedSha(plugin.name());
+            boolean available = !latest.headSha().equals(lastStaged);
+            String detail = available
+                    ? "New " + plugin.branch() + " build available at " + shortSha(latest.headSha()) + "."
+                    : "Already staged from " + plugin.branch() + " at " + shortSha(latest.headSha()) + ".";
+
+            return new UpdateStatus(
+                    plugin,
+                    installedVersion,
+                    latest.headSha(),
+                    latest.artifact(),
+                    available,
+                    staged,
+                    detail
+            );
         } catch (Exception exception) {
             return new UpdateStatus(
                     plugin,
@@ -100,54 +117,95 @@ public final class UpdateService {
     }
 
     public Path stage(UpdateStatus status) throws IOException, InterruptedException {
-        if (!status.updateAvailable() || status.asset() == null) {
-            throw new IllegalArgumentException("No update is available for " + status.plugin().name() + ".");
+        if (!status.updateAvailable() || status.artifact() == null) {
+            throw new IllegalArgumentException("No new main build is available for " + status.plugin().name() + ".");
         }
-        if (status.asset().size() <= 0 || status.asset().size() > MAX_JAR_SIZE) {
-            throw new IOException("Release asset size is outside the allowed range.");
+        if (status.artifact().size() <= 0 || status.artifact().size() > MAX_ARTIFACT_SIZE) {
+            throw new IOException("Actions artifact size is outside the allowed range.");
         }
 
         Files.createDirectories(updateFolder);
         Files.createDirectories(tempFolder);
 
-        Path temp = Files.createTempFile(tempFolder, status.plugin().name() + "-", ".jar.part");
+        Path archive = Files.createTempFile(tempFolder, status.plugin().name() + "-", ".zip.part");
+        Path extractedJar = Files.createTempFile(tempFolder, status.plugin().name() + "-", ".jar.part");
         try {
-            github.download(status.asset(), temp);
-            long downloaded = Files.size(temp);
-            if (downloaded <= 0 || downloaded > MAX_JAR_SIZE) {
-                throw new IOException("Downloaded JAR size is outside the allowed range.");
+            github.downloadArtifact(status.artifact(), archive);
+            long downloaded = Files.size(archive);
+            if (downloaded <= 0 || downloaded > MAX_ARTIFACT_SIZE) {
+                throw new IOException("Downloaded Actions artifact size is outside the allowed range.");
             }
-            verifyJar(temp, status.plugin().name(), status.releaseVersion());
+
+            extractJar(archive, extractedJar, status.plugin().jarPattern());
+            long jarSize = Files.size(extractedJar);
+            if (jarSize <= 0 || jarSize > MAX_JAR_SIZE) {
+                throw new IOException("Extracted JAR size is outside the allowed range.");
+            }
+
+            verifyJar(extractedJar, status.plugin().name());
 
             Path target = stagedPath(status.plugin());
             try {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(
+                        extractedJar,
+                        target,
+                        StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE
+                );
             } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(extractedJar, target, StandardCopyOption.REPLACE_EXISTING);
             }
+
+            state.markStaged(status.plugin().name(), status.mainSha());
             return target;
         } finally {
-            Files.deleteIfExists(temp);
+            Files.deleteIfExists(archive);
+            Files.deleteIfExists(extractedJar);
         }
     }
 
     public boolean clear(ManagedPlugin plugin) throws IOException {
-        return Files.deleteIfExists(stagedPath(plugin));
+        boolean removed = Files.deleteIfExists(stagedPath(plugin));
+        state.clear(plugin.name());
+        return removed;
     }
 
     public Path stagedPath(ManagedPlugin plugin) {
         return updateFolder.resolve(plugin.name() + ".jar");
     }
 
-    private Optional<GithubReleaseClient.Asset> selectAsset(
-            ManagedPlugin plugin,
-            GithubReleaseClient.Release release
-    ) {
-        Pattern pattern = glob(plugin.assetPattern());
-        return release.assets().stream()
-                .filter(asset -> pattern.matcher(asset.name()).matches())
-                .filter(asset -> asset.name().toLowerCase().endsWith(".jar"))
-                .findFirst();
+    public String lastStagedSha(ManagedPlugin plugin) {
+        return state.lastStagedSha(plugin.name());
+    }
+
+    private void extractJar(Path archive, Path destination, String jarPattern) throws IOException {
+        Pattern pattern = glob(jarPattern);
+        boolean found = false;
+
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+
+                String fileName = Path.of(entry.getName()).getFileName().toString();
+                if (!pattern.matcher(fileName).matches() || !fileName.toLowerCase().endsWith(".jar")) {
+                    continue;
+                }
+
+                if (found) {
+                    throw new IOException("Actions artifact contains more than one matching JAR.");
+                }
+
+                Files.copy(zip, destination, StandardCopyOption.REPLACE_EXISTING);
+                found = true;
+            }
+        }
+
+        if (!found) {
+            throw new IOException("Actions artifact does not contain a JAR matching " + jarPattern + ".");
+        }
     }
 
     private Pattern glob(String value) {
@@ -157,7 +215,7 @@ public final class UpdateService {
         return Pattern.compile("^" + regex + "$", Pattern.CASE_INSENSITIVE);
     }
 
-    private void verifyJar(Path jarPath, String expectedPluginName, String releaseVersion) throws IOException {
+    private void verifyJar(Path jarPath, String expectedPluginName) throws IOException {
         try (JarFile jar = new JarFile(jarPath.toFile())) {
             JarEntry pluginYml = jar.getJarEntry("plugin.yml");
             if (pluginYml == null) {
@@ -166,24 +224,26 @@ public final class UpdateService {
 
             YamlConfiguration metadata;
             try (InputStreamReader reader = new InputStreamReader(
-                    jar.getInputStream(pluginYml), StandardCharsets.UTF_8)) {
+                    jar.getInputStream(pluginYml),
+                    StandardCharsets.UTF_8
+            )) {
                 metadata = YamlConfiguration.loadConfiguration(reader);
             }
 
             String pluginName = metadata.getString("name", "");
             String jarVersion = metadata.getString("version", "");
             if (!expectedPluginName.equals(pluginName)) {
-                throw new IOException("Downloaded JAR is " + pluginName + ", expected " + expectedPluginName + ".");
+                throw new IOException(
+                        "Downloaded JAR is " + pluginName + ", expected " + expectedPluginName + "."
+                );
             }
-            try {
-                if (SemVer.parse(jarVersion).compareTo(SemVer.parse(releaseVersion)) != 0) {
-                    throw new IOException(
-                            "Downloaded JAR version " + jarVersion + " does not match release " + releaseVersion + "."
-                    );
-                }
-            } catch (IllegalArgumentException exception) {
-                throw new IOException("Downloaded JAR has an invalid version.", exception);
+            if (jarVersion.isBlank()) {
+                throw new IOException("Downloaded JAR does not declare a version.");
             }
         }
+    }
+
+    private String shortSha(String sha) {
+        return sha == null || sha.length() < 8 ? sha : sha.substring(0, 8);
     }
 }
