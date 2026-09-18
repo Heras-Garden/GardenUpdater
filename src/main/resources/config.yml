@@ -1,0 +1,38 @@
+updates:
+  check-on-startup: true
+  check-interval-hours: 6
+  auto-stage: true
+  include-prereleases: false
+  github-token: ""
+
+plugins:
+  GardenCore:
+    repository: Heras-Garden/GardenCore
+    asset: "GardenCore*.jar"
+  GardenLands:
+    repository: Heras-Garden/GardenLands
+    asset: "GardenLands*.jar"
+  GardenEssentials:
+    repository: Heras-Garden/GardenEssentials
+    asset: "GardenEssentials*.jar"
+  GardenModeration:
+    repository: Heras-Garden/GardenModeration
+    asset: "GardenModeration*.jar"
+  GardenPost:
+    repository: Heras-Garden/GardenPost
+    asset: "GardenPost*.jar"
+  GardenTrade:
+    repository: Heras-Garden/GardenTrade
+    asset: "GardenTrade*.jar"
+  GardenCivics:
+    repository: Heras-Garden/GardenCivics
+    asset: "GardenCivics*.jar"
+  GardenEvents:
+    repository: Heras-Garden/GardenEvents
+    asset: "GardenEvents*.jar"
+  GardenCosmetics:
+    repository: Heras-Garden/GardenCosmetics
+    asset: "GardenCosmetics*.jar"
+  GardenUpdater:
+    repository: Heras-Garden/GardenUpdater
+    asset: "GardenUpdater*.jar"
