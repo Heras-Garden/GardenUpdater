@@ -4,7 +4,7 @@ main: com.herasgarden.gardenupdater.GardenUpdater
 api-version: '26.2'
 author: Hera's Garden
 website: https://herasgarden.net
-description: Safely stages Hera's Garden plugin updates from GitHub Releases.
+description: Safely stages Hera's Garden plugin updates from successful GitHub Actions builds.
 
 commands:
   gardenupdate:
