@@ -1,23 +1,26 @@
 # Configuration
 
-The managed plugin list maps a Bukkit plugin name to a GitHub repository and expected release asset.
+```yaml
+updates:
+  check-on-startup: true
+  check-interval-hours: 6
+  auto-stage: true
+  github-token: ""
+```
 
-Example:
+`auto-stage` downloads a newer successful main build but does not restart the server.
+
+For public repositories, GitHub metadata can often be read without authentication. Actions artifact downloads may require authentication or hit anonymous API limits. Prefer the `GARDEN_GITHUB_TOKEN` environment variable when a token is needed.
+
+Each plugin declares the repository, branch, Actions artifact name, and JAR file pattern.
 
 ```yaml
 plugins:
-  GardenCore:
-    repository: Heras-Garden/GardenCore
-    asset: GardenCore.jar
   GardenLands:
     repository: Heras-Garden/GardenLands
-    asset: GardenLands.jar
+    branch: main
+    artifact: GardenLands
+    jar: "GardenLands*.jar"
 ```
 
-Recommended defaults:
-
-- Check on startup
-- Check periodically
-- Do not automatically restart the server
-- Do not install pre-releases unless explicitly enabled
-- Use GitHub's public release API without a token when possible
+The current main commit is only eligible when a successful Actions run exists for that exact SHA.

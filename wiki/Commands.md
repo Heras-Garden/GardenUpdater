@@ -1,11 +1,10 @@
 # Commands
 
-Planned administrator commands:
+- `/gardenupdate status` shows installed versions and staged updates.
+- `/gardenupdate check` checks all configured GitHub Releases.
+- `/gardenupdate stage all` downloads every available update.
+- `/gardenupdate stage <plugin>` downloads one available update.
+- `/gardenupdate clear all` removes all staged Garden updates.
+- `/gardenupdate clear <plugin>` removes one staged update.
 
-- `/gardenupdate status`
-- `/gardenupdate check`
-- `/gardenupdate stage <plugin>`
-- `/gardenupdate stage all`
-- `/gardenupdate clear <plugin>`
-
-The updater should also report which staged updates require a restart.
+All updater commands require `gardenupdater.admin`.
