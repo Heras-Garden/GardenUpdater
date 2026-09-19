@@ -37,6 +37,10 @@ public final class GardenUpdateCommand implements CommandExecutor, TabCompleter 
                 plugin.check(sender, true, target);
                 yield true;
             }
+            case "reload" -> {
+                plugin.reloadUpdaterConfig(sender);
+                yield true;
+            }
             case "clear" -> {
                 if (args.length < 2) {
                     plugin.send(sender, "Use /gardenupdate clear <plugin|all>.");
@@ -46,7 +50,7 @@ public final class GardenUpdateCommand implements CommandExecutor, TabCompleter 
                 yield true;
             }
             default -> {
-                plugin.send(sender, "Use /gardenupdate <status|check|stage|clear>.");
+                plugin.send(sender, "Use /gardenupdate <status|check|stage|clear|reload>.");
                 yield true;
             }
         };
@@ -58,7 +62,7 @@ public final class GardenUpdateCommand implements CommandExecutor, TabCompleter 
             return List.of();
         }
         if (args.length == 1) {
-            return match(args[0], List.of("status", "check", "stage", "clear"));
+            return match(args[0], List.of("status", "check", "stage", "clear", "reload"));
         }
         if (args.length == 2 && (args[0].equalsIgnoreCase("stage") || args[0].equalsIgnoreCase("clear"))) {
             return match(args[1], plugin.managedNames());

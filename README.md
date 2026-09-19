@@ -28,7 +28,7 @@ The JAR is written to `target/`.
 /gardenupdate clear <plugin>
 ```
 
-The commands require `gardenupdater.admin`.
+The commands require `gardenupdater.admin`. `/gardenupdate reload` reloads GardenUpdater configuration only. It does not reload installed plugin JARs.
 
 ## Main branch update mode
 

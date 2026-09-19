@@ -21,6 +21,27 @@ public final class GardenUpdater extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
+        configureUpdates();
+
+        GardenUpdateCommand command = new GardenUpdateCommand(this);
+        Objects.requireNonNull(getCommand("gardenupdate")).setExecutor(command);
+        Objects.requireNonNull(getCommand("gardenupdate")).setTabCompleter(command);
+
+        scheduleChecks();
+        getLogger().info(
+                "GardenUpdater enabled. Successful main-branch builds will be staged for the next restart."
+        );
+    }
+
+    public void reloadUpdaterConfig(CommandSender sender) {
+        reloadConfig();
+        configureUpdates();
+        Bukkit.getScheduler().cancelTasks(this);
+        scheduleChecks();
+        send(sender, "GardenUpdater configuration reloaded.");
+    }
+
+    private void configureUpdates() {
         String configuredToken = getConfig().getString("updates.github-token", "");
         String environmentToken = System.getenv("GARDEN_GITHUB_TOKEN");
         String token = environmentToken == null || environmentToken.isBlank()
@@ -34,15 +55,6 @@ public final class GardenUpdater extends JavaPlugin {
                 managed,
                 Bukkit.getUpdateFolderFile().toPath(),
                 getDataFolder().toPath().resolve("downloads")
-        );
-
-        GardenUpdateCommand command = new GardenUpdateCommand(this);
-        Objects.requireNonNull(getCommand("gardenupdate")).setExecutor(command);
-        Objects.requireNonNull(getCommand("gardenupdate")).setTabCompleter(command);
-
-        scheduleChecks();
-        getLogger().info(
-                "GardenUpdater enabled. Successful main-branch builds will be staged for the next restart."
         );
     }
 
