@@ -49,6 +49,20 @@ public final class UpdateService {
         return managed;
     }
 
+    public void cleanupPartialDownloads() {
+        if (!Files.isDirectory(tempFolder)) return;
+        try (java.util.stream.Stream<Path> files = Files.list(tempFolder)) {
+            files.filter(path -> path.getFileName().toString().endsWith(".part"))
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException ignored) {
+                        }
+                    });
+        } catch (IOException ignored) {
+        }
+    }
+
     public List<UpdateStatus> checkAll(Map<String, String> installedVersions) {
         List<UpdateStatus> statuses = new ArrayList<>();
         for (ManagedPlugin plugin : managed) {
@@ -89,6 +103,22 @@ public final class UpdateService {
 
             GithubActionsClient.MainBuild latest = build.get();
             String lastStaged = state.lastStagedSha(plugin.name());
+            if (!lastStaged.isBlank() && !Files.exists(stagedPath)) {
+                try {
+                    state.clear(plugin.name());
+                    lastStaged = "";
+                } catch (IOException exception) {
+                    return new UpdateStatus(
+                            plugin,
+                            installedVersion,
+                            latest.headSha(),
+                            latest.artifact(),
+                            false,
+                            false,
+                            "Staged-state reconciliation failed: " + exception.getMessage()
+                    );
+                }
+            }
             boolean available = !latest.headSha().equals(lastStaged);
             String detail = available
                     ? "New " + plugin.branch() + " build available at " + shortSha(latest.headSha()) + "."

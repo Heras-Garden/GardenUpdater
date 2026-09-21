@@ -56,6 +56,7 @@ public final class GardenUpdater extends JavaPlugin {
                 Bukkit.getUpdateFolderFile().toPath(),
                 getDataFolder().toPath().resolve("downloads")
         );
+        updates.cleanupPartialDownloads();
     }
 
     public void showStatus(CommandSender sender) {
